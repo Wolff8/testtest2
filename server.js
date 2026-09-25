@@ -3,12 +3,14 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 
-const trainSim = require("./src/trainSim");
-const loraSim = require("./src/loraSim");
 const { buildSnapshot } = require("./src/signals");
 
 const PORT = process.env.PORT || 3000;
-const TICK_SECONDS = 3;
+// Real external APIs (ADS-B, ARSO, aprs.fi, Overpass, RepeaterBook,
+// Transitous) are polled on a much longer interval than a fake simulation
+// would need, to stay a reasonable, well-behaved client of free public
+// services.
+const TICK_SECONDS = 30;
 const APRS_FI_API_KEY = process.env.APRS_FI_API_KEY || "";
 
 const app = express();
@@ -27,25 +29,12 @@ app.get("/api/signals", async (req, res) => {
   }
 });
 
-app.get("/api/lora", (req, res) => {
-  res.json({ items: loraSim.list(req.query.kind) });
-});
-
-app.get("/api/sip", (req, res) => {
-  res.json(loraSim.sipStatus());
-});
-
 io.on("connection", (socket) => {
   socket.emit("hello", { ok: true });
 });
 
-async function tickLoop() {
-  const trains = trainSim.tick(TICK_SECONDS);
-  loraSim.generate(trains);
-  io.emit("feed", { at: new Date().toISOString() });
-}
 setInterval(() => {
-  tickLoop().catch((err) => console.error("tick loop error", err));
+  io.emit("feed", { at: new Date().toISOString() });
 }, TICK_SECONDS * 1000);
 
 server.listen(PORT, () => {
