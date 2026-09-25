@@ -240,8 +240,11 @@ function switchInspectorTab(tabId) {
 // LEAFLET MAP
 // ========================================================================
 function initMap() {
-  map = L.map('leafletMap', { center: [46.68, 16.15], zoom: 10, zoomControl: true, attributionControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+  map = L.map('leafletMap', { center: [46.68, 16.15], zoom: 10, zoomControl: true, attributionControl: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
   layerGroups.trains = L.layerGroup().addTo(map);
   layerGroups.stations = L.layerGroup().addTo(map);
   layerGroups.planes = L.layerGroup().addTo(map);
