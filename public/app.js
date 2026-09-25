@@ -12,7 +12,8 @@ const ICONS = {
   refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>',
   map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9 4l6 2 5-2v14l-5 2-6-2-5 2V6z"/><path d="M9 4v14M15 6v14"/></svg>',
   expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
-  compress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
+  compress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5c0 8 7 15 15 15l2-4-5-2-2 2c-2-1-4-3-5-5l2-2-2-5z"/></svg>'
 };
 function paintIcons(root) {
   (root || document).querySelectorAll('[data-i]').forEach(el => {
@@ -34,8 +35,8 @@ let selectedTrainId = null;
 let activeInspectorTab = 'trains';
 
 let map = null;
-const layerGroups = { trains: null, stations: null, planes: null, meteo: null, aprs: null };
-const layerVisibility = { trains: true, stations: true, planes: true, meteo: true, aprs: false };
+const layerGroups = { trains: null, stations: null, planes: null, meteo: null, aprs: null, lorawan: null };
+const layerVisibility = { trains: true, stations: true, planes: true, meteo: true, aprs: false, lorawan: false };
 
 function selectedTrain() {
   if (!activeSnap || !activeSnap.trains.available) return null;
@@ -85,12 +86,18 @@ function updateAllUiViews() {
   document.getElementById('badgeCountPlanes').innerText = activeSnap.planes.available ? `${activeSnap.planes.items.length} letal` : "ni letal";
   document.getElementById('badgeCountMeteo').innerText = activeSnap.meteo.available ? `${activeSnap.meteo.items.length} ARSO` : "ni ARSO";
   document.getElementById('badgeCountAprs').innerText = activeSnap.aprs.available ? `${activeSnap.aprs.items.length} APRS` : "ni APRS";
+  document.getElementById('badgeCountLora').innerText = activeSnap.lorawan.available ? `${activeSnap.lorawan.items.length} LoRaWAN` : "ni LoRaWAN";
   document.getElementById('issText').innerText = activeSnap.iss.available ? `ISS: ${activeSnap.iss.km} km` : "ISS: ni podatkov";
+  if (activeSnap.sip.available) {
+    const ok = activeSnap.sip.items.find((h) => h.ok) || activeSnap.sip.items[0];
+    document.getElementById('sipStatusVal').innerText = ok ? `${ok.id} (${ok.ok ? ok.ms + ' ms' : 'ni odziva'})` : "ni odziva";
+  }
 
   renderTrainsList();
   renderPlanesList();
   renderMeteoAndRiversList();
   renderAprsAndHamList();
+  renderNetworkTab();
   updateMapLayers();
   updateHud();
 }
@@ -178,24 +185,44 @@ function renderAprsAndHamList() {
   const aprsLabel = document.getElementById('aprsSourceLabel');
   if (!activeSnap.aprs.available) { aprsLabel.innerText = "ni podatkov"; document.getElementById('aprsListContainer').innerHTML = unavailableHtml(activeSnap.aprs.note); }
   else {
-    aprsLabel.innerText = "živo · aprs.fi";
-    document.getElementById('aprsListContainer').innerHTML = activeSnap.aprs.items.map(a => `<div class="p-1.5 rounded-lg bg-space-900 border border-slate-800 flex items-center justify-between">
+    aprsLabel.innerText = "živo · APRS-IS";
+    document.getElementById('aprsListContainer').innerHTML = activeSnap.aprs.items.length === 0
+      ? '<div class="unavailable">Trenutno ni slišanih APRS postaj v območju (živi feed, lahko traja nekaj minut po zagonu).</div>'
+      : activeSnap.aprs.items.map(a => `<div class="p-1.5 rounded-lg bg-space-900 border border-slate-800 flex items-center justify-between">
       <div class="truncate"><span class="font-bold text-purple-400">${a.call}</span><span class="text-slate-400 text-[9px] ml-1 truncate">${a.comment || a.path || ''}</span></div>
       <div class="text-right text-[10px] shrink-0 ml-2 text-slate-400">${Math.round(a.age || 0)}s</div></div>`).join('');
   }
   const hamLabel = document.getElementById('hamSourceLabel');
   if (!activeSnap.ham.available) { hamLabel.innerText = "ni podatkov"; document.getElementById('hamListContainer').innerHTML = unavailableHtml(activeSnap.ham.note); }
   else {
-    hamLabel.innerText = "živo · RepeaterBook";
+    hamLabel.innerText = "živo · Hearham";
     document.getElementById('hamListContainer').innerHTML = activeSnap.ham.items.map(h => `<div class="p-1.5 rounded-lg bg-space-900 border border-slate-800 flex items-center justify-between">
       <div><span class="font-bold text-white">${h.call}</span><span class="text-slate-400 text-[10px] ml-1">${h.city} (${h.mode})</span></div>
       <div class="text-right text-[10px] text-amber-300 font-bold">${h.mhz} MHz</div></div>`).join('');
   }
 }
 
+function renderNetworkTab() {
+  const sipC = document.getElementById('sipListContainer');
+  sipC.innerHTML = (activeSnap.sip.items || []).map(h => `<div class="p-1.5 rounded-lg bg-space-900 border border-slate-800 flex items-center justify-between">
+    <div class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full ${h.ok ? 'bg-emerald-400' : 'bg-rose-500'}"></span><span class="font-bold text-white">${h.id}</span><span class="text-slate-500 text-[10px]">${h.host}</span></div>
+    <div class="text-right text-[10px] ${h.ok ? 'text-emerald-400' : 'text-rose-400'} font-bold">${h.ok ? h.ms + ' ms' : 'ni odziva'}</div></div>`).join('');
+
+  const loraLabel = document.getElementById('loraSourceLabel');
+  if (!activeSnap.lorawan.available) { loraLabel.innerText = "ni podatkov"; document.getElementById('loraListContainer').innerHTML = unavailableHtml(activeSnap.lorawan.note); }
+  else {
+    loraLabel.innerText = "živo · Packet Broker";
+    document.getElementById('loraListContainer').innerHTML = activeSnap.lorawan.items.length === 0
+      ? '<div class="unavailable">Ni javnih LoRaWAN prehodov v tem območju.</div>'
+      : activeSnap.lorawan.items.map(g => `<div class="p-1.5 rounded-lg bg-space-900 border border-slate-800 flex items-center justify-between">
+      <div class="flex items-center gap-1.5 truncate"><span class="w-1.5 h-1.5 rounded-full ${g.online ? 'bg-emerald-400' : 'bg-slate-600'}"></span><span class="font-bold text-white truncate">${g.id}</span></div>
+      <div class="text-right text-[10px] text-slate-400 shrink-0 ml-2">${g.online ? 'online' : 'offline'}${g.stats ? ` · UL ${g.stats.uplink}` : ''}</div></div>`).join('');
+  }
+}
+
 function switchInspectorTab(tabId) {
   activeInspectorTab = tabId;
-  ['trains', 'planes', 'meteo', 'aprs'].forEach(t => {
+  ['trains', 'planes', 'meteo', 'aprs', 'network'].forEach(t => {
     const btn = document.getElementById(`tabBtn-${t}`), panel = document.getElementById(`inspectorTab-${t}`);
     if (t === tabId) { btn.className = 'px-2 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-mono font-bold whitespace-nowrap'; panel.classList.remove('hidden'); }
     else { btn.className = 'px-2 py-1 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[11px] font-mono font-bold hover:text-white whitespace-nowrap'; panel.classList.add('hidden'); }
@@ -206,6 +233,7 @@ function switchInspectorTab(tabId) {
   if (tabId === 'planes') countEl.innerText = activeSnap.planes.available ? `${activeSnap.planes.items.length} letal` : "0";
   if (tabId === 'meteo') countEl.innerText = activeSnap.meteo.available ? `${activeSnap.meteo.items.length} postaj` : "0";
   if (tabId === 'aprs') countEl.innerText = (activeSnap.aprs.available ? activeSnap.aprs.items.length : 0) + (activeSnap.ham.available ? activeSnap.ham.items.length : 0);
+  if (tabId === 'network') countEl.innerText = (activeSnap.lorawan.available ? activeSnap.lorawan.items.length : 0);
 }
 
 // ========================================================================
@@ -219,13 +247,14 @@ function initMap() {
   layerGroups.planes = L.layerGroup().addTo(map);
   layerGroups.meteo = L.layerGroup().addTo(map);
   layerGroups.aprs = L.layerGroup();
+  layerGroups.lorawan = L.layerGroup();
   setTimeout(() => { if (map) map.invalidateSize(); }, 350);
 }
 function toggleMapLayer(layerName) {
   layerVisibility[layerName] = !layerVisibility[layerName];
   const isVisible = layerVisibility[layerName];
   const btn = document.getElementById(`btnLayer${layerName.charAt(0).toUpperCase() + layerName.slice(1)}`);
-  const activeClasses = { trains: ['bg-amber-500/20', 'text-amber-300', 'border-amber-500/40'], stations: ['bg-sky-500/20', 'text-sky-300', 'border-sky-500/40'], planes: ['bg-cyan-500/20', 'text-cyan-300', 'border-cyan-500/40'], meteo: ['bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/40'], aprs: ['bg-purple-500/20', 'text-purple-300', 'border-purple-500/40'] }[layerName];
+  const activeClasses = { trains: ['bg-amber-500/20', 'text-amber-300', 'border-amber-500/40'], stations: ['bg-sky-500/20', 'text-sky-300', 'border-sky-500/40'], planes: ['bg-cyan-500/20', 'text-cyan-300', 'border-cyan-500/40'], meteo: ['bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/40'], aprs: ['bg-purple-500/20', 'text-purple-300', 'border-purple-500/40'], lorawan: ['bg-indigo-500/20', 'text-indigo-300', 'border-indigo-500/40'] }[layerName];
   if (btn) {
     if (isVisible) { btn.classList.add(...activeClasses); btn.classList.remove('bg-space-950', 'text-slate-400', 'border-slate-800'); }
     else { btn.classList.remove(...activeClasses); btn.classList.add('bg-space-950', 'text-slate-400', 'border-slate-800'); }
@@ -267,6 +296,12 @@ function updateMapLayers() {
     if (!a.lat || !a.lon) return;
     const icon = L.divIcon({ className: 'custom-aprs-marker', html: `<div class="flex items-center justify-center w-5 h-5 rounded bg-purple-600/90 text-white shadow text-[9px] font-bold">📻</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
     L.marker([a.lat, a.lon], { icon }).addTo(layerGroups.aprs).bindPopup(`<div class="font-mono text-xs p-1"><div class="font-bold text-purple-400">📻 ${a.call}</div><div class="text-slate-300 text-[11px]">${a.comment || ''}</div></div>`);
+  });
+  layerGroups.lorawan.clearLayers();
+  if (activeSnap.lorawan.available) activeSnap.lorawan.items.forEach(g => {
+    if (!g.lat || !g.lon) return;
+    const icon = L.divIcon({ className: 'custom-lora-marker', html: `<div class="flex items-center justify-center w-5 h-5 rounded-full ${g.online ? 'bg-indigo-500' : 'bg-slate-600'}/90 text-white shadow text-[9px] font-bold">📡</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
+    L.marker([g.lat, g.lon], { icon }).addTo(layerGroups.lorawan).bindPopup(`<div class="font-mono text-xs p-1"><div class="font-bold text-indigo-400">📡 ${g.id}</div><div class="text-slate-300 text-[11px]">${g.online ? 'online' : 'offline'} · Packet Broker</div></div>`);
   });
 }
 function toggleExpandMap() {

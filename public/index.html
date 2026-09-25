@@ -62,7 +62,7 @@ tailwind.config = {
             <span id="backendStatusText">POVEZOVANJE...</span>
           </span>
         </div>
-        <p class="text-[10px] text-slate-500 font-mono truncate">Neuradna demo &middot; samo realni javni podatki (ADS-B, ARSO, aprs.fi, OSM, RepeaterBook) ali "ni podatkov"</p>
+        <p class="text-[10px] text-slate-500 font-mono truncate">Neuradna demo &middot; samo realni javni podatki (ADS-B, ARSO, APRS-IS, OSM, Hearham, Packet Broker) ali "ni podatkov"</p>
       </div>
     </div>
     <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -93,9 +93,12 @@ tailwind.config = {
       <span class="inline-flex items-center gap-1 text-[11px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/30"><span class="ic" data-i="plane"></span><span id="badgeCountPlanes">— letal</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30"><span class="ic" data-i="cloud"></span><span id="badgeCountMeteo">— ARSO</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-500/30"><span class="ic" data-i="radio"></span><span id="badgeCountAprs">— APRS</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-indigo-300 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-500/30"><span class="ic" data-i="tower"></span><span id="badgeCountLora">— LoRaWAN</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-yellow-300 bg-yellow-950/60 px-2 py-0.5 rounded border border-yellow-500/30"><span class="ic" data-i="sat"></span><span id="issText">ISS: —</span></span>
     </div>
     <div class="flex items-center gap-3 text-[11px] text-slate-400">
+      <span class="flex items-center gap-1"><span class="ic text-rose-400" data-i="phone"></span> SIP: <span class="text-white" id="sipStatusVal">—</span></span>
+      <span class="text-slate-700">|</span>
       <span id="lastApiUpdateTime">Sinhronizacija: —</span>
     </div>
   </div>
@@ -113,6 +116,7 @@ tailwind.config = {
           <button onclick="toggleMapLayer('planes')" id="btnLayerPlanes" class="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-mono font-bold transition">ADS-B</button>
           <button onclick="toggleMapLayer('meteo')" id="btnLayerMeteo" class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold transition">ARSO</button>
           <button onclick="toggleMapLayer('aprs')" id="btnLayerAprs" class="px-2 py-0.5 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[10px] font-mono font-bold transition">APRS</button>
+          <button onclick="toggleMapLayer('lorawan')" id="btnLayerLorawan" class="px-2 py-0.5 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[10px] font-mono font-bold transition">LoRaWAN</button>
           <button onclick="toggleExpandMap()" class="px-2 py-0.5 rounded-lg bg-space-950 hover:bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-800 transition" title="Razširi zemljevid">
             <span class="ic" id="expandIcon" data-i="expand"></span>
           </button>
@@ -139,6 +143,7 @@ tailwind.config = {
           <button onclick="switchInspectorTab('planes')" id="tabBtn-planes" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Letala</button>
           <button onclick="switchInspectorTab('meteo')" id="tabBtn-meteo" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Vreme &amp; reke</button>
           <button onclick="switchInspectorTab('aprs')" id="tabBtn-aprs" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Radioamaterji</button>
+          <button onclick="switchInspectorTab('network')" id="tabBtn-network" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Omrežje</button>
         </div>
         <span class="text-[10px] font-mono text-cyan-400 font-bold shrink-0" id="tabItemsCount">0</span>
       </div>
@@ -159,16 +164,22 @@ tailwind.config = {
         <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[150px] space-y-1 font-mono text-[11px]" id="riversListContainer"></div>
       </div>
       <div id="inspectorTab-aprs" class="hidden space-y-2.5 flex-1 flex flex-col">
-        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>APRS postaje (aprs.fi)</span><span class="text-purple-400" id="aprsSourceLabel">—</span></div>
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>APRS postaje (APRS-IS, v živo)</span><span class="text-purple-400" id="aprsSourceLabel">—</span></div>
         <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[160px] space-y-1 font-mono text-[10px]" id="aprsListContainer"></div>
-        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between mt-1"><span>Repetitorji (RepeaterBook)</span><span class="text-indigo-400" id="hamSourceLabel">—</span></div>
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between mt-1"><span>Repetitorji (Hearham)</span><span class="text-indigo-400" id="hamSourceLabel">—</span></div>
         <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[150px] space-y-1 font-mono text-[11px]" id="hamListContainer"></div>
+      </div>
+      <div id="inspectorTab-network" class="hidden space-y-2.5 flex-1 flex flex-col">
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>SIP (aktivni OPTIONS test)</span><span class="text-rose-400">živo</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 space-y-1 font-mono text-[11px]" id="sipListContainer"></div>
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between mt-1"><span>LoRaWAN prehodi (Packet Broker)</span><span class="text-indigo-400" id="loraSourceLabel">—</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[220px] space-y-1 font-mono text-[11px]" id="loraListContainer"></div>
       </div>
     </div>
   </div>
 
   <p class="text-center text-[10px] text-slate-600 font-mono pb-4">
-    Konceptni demo. Letala (ADS-B), ISS, vreme (ARSO), APRS, repetitorji in železniške postaje so realni javni podatki, prikazani v živo, kadar je vir dosegljiv — sicer piše "ni podatkov", nič ni izmišljeno. Položaji vlakov so ocena iz objavljenega voznega reda, ne prava GPS telemetrija. Ni uradno orodje SŽ / DRI / ARSO.
+    Konceptni demo. Letala (ADS-B), ISS, vreme in reke (ARSO), APRS (APRS-IS, v živo), LoRaWAN prehodi (Packet Broker), repetitorji (Hearham) in železniške postaje (OSM) so realni javni podatki — sicer piše "ni podatkov", nič ni izmišljeno. SIP prikazuje rezultat pravega aktivnega OPTIONS testa proti javnim SIP strežnikom. Položaji vlakov so ocena iz objavljenega voznega reda, ne prava GPS telemetrija. Ni uradno orodje SŽ / DRI / ARSO.
   </p>
 </main>
 
