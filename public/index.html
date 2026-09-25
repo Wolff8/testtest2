@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="sl" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SignalsSnap NOC — GSM-R, LoRaWAN &amp; Telemetry</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: { space: { 850: '#0c1222', 900: '#070b14', 950: '#03050a' } },
+      fontFamily: {
+        sans: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace']
+      }
+    }
+  }
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  ::-webkit-scrollbar{ width:6px; height:6px; }
+  ::-webkit-scrollbar-track{ background:#03050a; }
+  ::-webkit-scrollbar-thumb{ background:#1e293b; border-radius:9999px; }
+  ::-webkit-scrollbar-thumb:hover{ background:#334155; }
+  button,a{ -webkit-tap-highlight-color:transparent; }
+  .ic{ display:inline-flex; width:1em; height:1em; vertical-align:-0.125em; }
+  .ic svg{ width:100%; height:100%; }
+  .no-scrollbar::-webkit-scrollbar{ display:none; }
+  .no-scrollbar{ -ms-overflow-style:none; scrollbar-width:none; }
+  .leaflet-popup-content-wrapper{ background:#070b14 !important; color:#f1f5f9 !important; border:1px solid #1e293b; border-radius:12px; }
+  .leaflet-popup-tip{ background:#070b14 !important; border:1px solid #1e293b; }
+  .leaflet-container{ background:#03050a !important; font-family:inherit; }
+
+  .s-ertms{ background:#070b14; border:1px solid rgba(245,158,11,.35); border-radius:1rem; padding:1rem; box-shadow:0 10px 30px -10px rgba(0,0,0,.7); }
+  .s-ertms.empty{ background:#070b14; border:1px dashed #1e293b; text-align:center; padding:2.2rem 1rem; color:#64748b; font-family:"JetBrains Mono",monospace; font-size:.85rem; }
+  .s-ertms header{ display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; margin-bottom:.85rem; border-bottom:1px solid #1e293b; padding-bottom:.65rem; flex-wrap:wrap; }
+  .s-ertms .s-title small{ display:block; font-family:"JetBrains Mono",monospace; font-size:.65rem; color:#94a3b8; letter-spacing:.08em; text-transform:uppercase; font-weight:700; }
+  .s-ertms .s-title strong{ font-size:1.25rem; color:#fff; font-family:"JetBrains Mono",monospace; font-weight:800; }
+  .s-ertms .s-title span{ display:block; font-size:.78rem; color:#fbbf24; font-family:"JetBrains Mono",monospace; margin-top:.15rem; }
+  .s-ertms-grid{ display:grid; grid-template-columns:1fr; gap:.75rem; }
+  @media (min-width:640px){ .s-ertms-grid{ grid-template-columns:1fr 1fr; } }
+  .s-ertms-pane{ background:#03050a; border:1px solid #1e293b; border-radius:.75rem; padding:.75rem; display:flex; flex-direction:column; justify-content:space-between; }
+  .s-ertms-pane small{ font-family:"JetBrains Mono",monospace; font-size:.65rem; text-transform:uppercase; font-weight:700; color:#64748b; display:block; margin-bottom:.25rem; }
+  .s-ertms-pane b{ font-family:"JetBrains Mono",monospace; font-size:1.35rem; font-weight:800; color:#fff; line-height:1.2; }
+  .s-ertms-pane b em{ font-size:.75rem; font-weight:500; font-style:normal; color:#94a3b8; margin-left:.25rem; }
+  .s-ertms-pane ul{ list-style:none; padding:0; margin:.65rem 0; display:flex; flex-direction:column; gap:.35rem; }
+  .s-ertms-pane li{ display:flex; justify-content:space-between; align-items:center; font-family:"JetBrains Mono",monospace; font-size:.72rem; gap:.5rem; }
+  .s-ertms-pane li i{ font-style:normal; color:#64748b; text-transform:uppercase; }
+  .s-ertms-pane li span{ color:#cbd5e1; font-weight:600; text-align:right; }
+  .s-bar{ height:6px; width:100%; background:#1e293b; border-radius:9999px; overflow:hidden; margin-top:.5rem; }
+  .s-bar i{ display:block; height:100%; background:#38bdf8; border-radius:9999px; transition:width .5s ease; }
+  .s-bar.gsmr i{ background:#f59e0b; }
+  .s-bar.gsmr.good i{ background:#10b981; }
+  .s-bar.gsmr.fair i{ background:#f59e0b; }
+  .s-bar.gsmr.weak i{ background:#f43f5e; }
+  .s-ertms footer{ display:flex; flex-direction:column; gap:.25rem; margin-top:.85rem; padding-top:.65rem; border-top:1px solid #1e293b; font-family:"JetBrains Mono",monospace; font-size:.68rem; color:#94a3b8; }
+  @media (min-width:640px){ .s-ertms footer{ flex-direction:row; justify-content:space-between; align-items:center; } }
+  .s-ertms footer em{ font-style:italic; color:#475569; }
+  .plane-marker-icon{ transition:transform .3s ease; display:flex; align-items:center; justify-content:center; }
+</style>
+</head>
+<body class="bg-space-950 text-slate-100 font-sans min-h-screen antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
+
+<header class="sticky top-0 z-40 bg-space-900/90 backdrop-blur-md border-b border-slate-800/80 px-3 sm:px-6 py-2.5">
+  <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-amber-500 p-0.5 shadow-lg shadow-sky-500/20 flex items-center justify-center shrink-0">
+        <div class="w-full h-full bg-space-950 rounded-[14px] flex items-center justify-center text-sky-400"><span class="ic" data-i="tower"></span></div>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
+            <span>SignalsSnap</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono font-bold">NOC</span>
+          </h1>
+          <span id="backendStatusBadge" class="inline-flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="backendStatusText">POVEZOVANJE...</span>
+          </span>
+        </div>
+        <p class="text-[10px] text-slate-500 font-mono truncate">Neuradna demo &middot; GSM-R sim. + živi ADS-B/ISS/ARSO kjer na voljo</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <select id="placeSelect" onchange="changePlace(this.value)" class="bg-space-950 text-amber-300 text-xs font-mono font-bold border border-slate-800 rounded-xl px-2 py-1.5 focus:outline-none focus:border-amber-500 max-w-[92px] sm:max-w-none">
+        <option value="ms" selected>Murska Sobota</option>
+        <option value="pomurje">Pomurje regija</option>
+        <option value="lendava">Lendava</option>
+        <option value="ljutomer">Ljutomer</option>
+        <option value="radgona">G. Radgona</option>
+        <option value="lj">Ljubljana vozlišče</option>
+        <option value="si">Vsa Slovenija</option>
+      </select>
+      <button onclick="toggleErtmsLanguage()" class="px-2.5 py-1.5 rounded-xl bg-space-950 hover:bg-slate-800 text-amber-300 text-xs font-mono font-bold border border-slate-800 transition flex items-center gap-1 active:scale-95">
+        <span class="ic text-sky-400" data-i="globe"></span><span id="langLabel">SL</span>
+      </button>
+      <button onclick="refreshAllServerData()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-mono font-bold border border-amber-500/40 transition flex items-center gap-1.5 active:scale-95">
+        <span class="ic text-amber-400" id="refreshIcon" data-i="refresh"></span><span class="hidden sm:inline">Osveži</span>
+      </button>
+      <button onclick="scrollToLiveMap()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 text-xs font-mono font-bold border border-sky-500/40 transition flex items-center gap-1.5 active:scale-95">
+        <span class="ic" data-i="map"></span><span class="hidden md:inline">Zemljevid</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto p-3 sm:p-5 space-y-4">
+  <div class="p-3 rounded-2xl bg-space-900 border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-2.5 text-xs font-mono">
+    <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap justify-center">
+      <span class="inline-flex items-center gap-1 text-[11px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/30"><span class="ic" data-i="train"></span><span id="badgeCountTrains">0 vlakov</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-amber-300 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-500/30"><span class="ic" data-i="tower"></span><span id="badgeCountGsmr">0 GSM-R</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-sky-300 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-500/30"><span class="ic" data-i="plane"></span><span id="badgeCountPlanes">0 letal</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30"><span class="ic" data-i="cloud"></span><span id="badgeCountMeteo">0 ARSO</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-blue-300 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-500/30"><span class="ic" data-i="wave"></span><span id="badgeCountRivers">0 rek</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-500/30"><span class="ic" data-i="radio"></span><span id="badgeCountAprs">0 APRS</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-yellow-300 bg-yellow-950/60 px-2 py-0.5 rounded border border-yellow-500/30"><span class="ic" data-i="sat"></span><span id="issText">ISS: —</span></span>
+    </div>
+    <div class="flex items-center gap-3 text-[11px] text-slate-400">
+      <span class="flex items-center gap-1"><span class="ic text-rose-400" data-i="phone"></span> SIP: <span class="text-white" id="sipStatusVal">—</span></span>
+      <span class="text-slate-700">|</span>
+      <span id="lastApiUpdateTime">Sinhronizacija: —</span>
+    </div>
+  </div>
+
+  <div id="ertmsWindowMount"></div>
+
+  <div id="trainSensorsPanel" class="p-3.5 rounded-2xl bg-space-900 border border-slate-800 shadow-md space-y-2.5 font-mono">
+    <div class="flex items-center justify-between text-xs border-b border-slate-800 pb-2 flex-wrap gap-1.5">
+      <div class="flex items-center gap-2">
+        <span class="ic text-amber-400" data-i="chip"></span>
+        <span class="font-bold text-white uppercase text-[11px]">Telemetrijski senzorji vlaka</span>
+        <span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">QC 192 Good</span>
+      </div>
+      <div class="text-[11px] text-slate-400" id="waysideIndicator">Obprogovni element: —</div>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs" id="sensorsGridContainer"></div>
+  </div>
+
+  <div class="space-y-1.5">
+    <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex items-center justify-between px-1">
+      <span>Izberi aktivni vlak</span>
+      <span id="trainsCounterText" class="text-amber-400 font-bold">0 vlakov</span>
+    </div>
+    <div class="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-mono no-scrollbar" id="fleetTabsContainer"></div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4" id="mapSection">
+    <div class="lg:col-span-2 rounded-2xl bg-space-900 border border-slate-800 overflow-hidden shadow-xl flex flex-col">
+      <div class="p-3 bg-space-850 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">Multi-senzorski geografski nadzor</span>
+        </div>
+        <div class="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+          <button onclick="toggleMapLayer('trains')" id="btnLayerTrains" class="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-bold transition">Vlaki</button>
+          <button onclick="toggleMapLayer('gsmr')" id="btnLayerGsmr" class="px-2 py-0.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-mono font-bold transition">GSM-R</button>
+          <button onclick="toggleMapLayer('planes')" id="btnLayerPlanes" class="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-mono font-bold transition">ADS-B</button>
+          <button onclick="toggleMapLayer('meteo')" id="btnLayerMeteo" class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold transition">Vreme</button>
+          <button onclick="toggleMapLayer('aprs')" id="btnLayerAprs" class="px-2 py-0.5 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[10px] font-mono font-bold transition">APRS</button>
+          <button onclick="toggleExpandMap()" class="px-2 py-0.5 rounded-lg bg-space-950 hover:bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-800 transition" title="Razširi zemljevid">
+            <span class="ic" id="expandIcon" data-i="expand"></span>
+          </button>
+        </div>
+      </div>
+      <div class="relative w-full flex-1" style="min-height:480px;height:480px" id="mapWrapper">
+        <div id="leafletMap" class="w-full h-full" style="min-height:480px;height:480px;background:#03050a"></div>
+        <div class="absolute top-3 left-3 z-[400] p-2.5 rounded-xl bg-space-950/90 backdrop-blur-md border border-slate-800 shadow-xl font-mono text-[11px] max-w-[240px] pointer-events-none">
+          <div class="text-sky-400 font-bold flex items-center gap-1.5 mb-0.5"><span class="ic text-amber-400" data-i="train"></span><span id="hudName">—</span></div>
+          <div class="text-[10px] text-slate-300 truncate" id="hudRoute">—</div>
+          <div class="grid grid-cols-2 gap-1 mt-1.5 pt-1.5 border-t border-slate-800 text-[10px]">
+            <div>GSM-R: <span id="hudRssi" class="text-emerald-400 font-bold">—</span></div>
+            <div>SNR: <span id="hudSnr" class="text-emerald-400 font-bold">—</span></div>
+            <div>Hitrost: <span id="hudSpd" class="text-amber-400 font-bold">—</span></div>
+            <div>Tirnica: <span id="hudTrack" class="text-cyan-400 font-bold">—</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-2xl bg-space-900 border border-slate-800 p-3.5 shadow-xl flex flex-col gap-3">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div class="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          <button onclick="switchInspectorTab('trains')" id="tabBtn-trains" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Vlaki</button>
+          <button onclick="switchInspectorTab('planes')" id="tabBtn-planes" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Letala</button>
+          <button onclick="switchInspectorTab('meteo')" id="tabBtn-meteo" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Vreme &amp; vode</button>
+          <button onclick="switchInspectorTab('aprs')" id="tabBtn-aprs" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Ham</button>
+        </div>
+        <span class="text-[10px] font-mono text-cyan-400 font-bold shrink-0" id="tabItemsCount">0</span>
+      </div>
+
+      <div id="inspectorTab-trains" class="space-y-3 flex-1 flex flex-col">
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>Vozni red &amp; telemetrija</span><span class="text-amber-400">simulacija</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[190px] space-y-1.5" id="trainSignalsList"></div>
+        <div>
+          <div class="text-[10px] font-mono font-bold text-slate-400 uppercase mb-1 flex items-center justify-between"><span>Železniški peron (odhodi)</span><span class="text-cyan-400" id="boardStationLabel">Murska Sobota</span></div>
+          <div class="bg-space-950 rounded-xl border border-slate-800 p-2 max-h-[140px] overflow-y-auto space-y-1 text-[11px] font-mono" id="stationBoardList"></div>
+        </div>
+      </div>
+      <div id="inspectorTab-planes" class="hidden space-y-2 flex-1 flex flex-col">
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>Zračni promet (ADS-B / adsb.lol)</span><span class="text-sky-400" id="planesSourceLabel">—</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[340px] space-y-1.5 font-mono text-[11px]" id="planesListContainer"></div>
+      </div>
+      <div id="inspectorTab-meteo" class="hidden space-y-2.5 flex-1 flex flex-col">
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>Vremenske postaje (ARSO)</span><span class="text-emerald-400" id="meteoSourceLabel">—</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[160px] space-y-1 font-mono text-[11px]" id="meteoListContainer"></div>
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between mt-1"><span>Hidrološki podatki (reke)</span><span class="text-blue-400">demo</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[150px] space-y-1 font-mono text-[11px]" id="riversListContainer"></div>
+      </div>
+      <div id="inspectorTab-aprs" class="hidden space-y-2.5 flex-1 flex flex-col">
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>APRS paketi (aprs.fi)</span><span class="text-purple-400" id="aprsSourceLabel">—</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[160px] space-y-1 font-mono text-[10px]" id="aprsListContainer"></div>
+        <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between mt-1"><span>Radioamaterski repetitorji</span><span class="text-indigo-400">demo</span></div>
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[150px] space-y-1 font-mono text-[11px]" id="hamListContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-2xl bg-space-900 border border-slate-800 shadow-xl overflow-hidden flex flex-col">
+    <div class="p-3 sm:p-4 bg-space-850 border-b border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <span class="ic text-sky-400" data-i="tower"></span>
+        <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">Zajeti radijski paketi (LoRaWAN &amp; GSM-R)</span>
+        <span id="packetBadgeCount" class="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30 font-mono text-[11px] font-bold">0 paketov</span>
+      </div>
+      <div class="flex items-center gap-1 flex-wrap">
+        <button onclick="setPacketFilter('ALL')" id="filterBtn-ALL" class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition">Vsi</button>
+        <button onclick="setPacketFilter('TRAIN')" id="filterBtn-TRAIN" class="px-2.5 py-1 rounded-lg text-xs font-mono border transition">Vlaki SŽ</button>
+        <button onclick="setPacketFilter('UL')" id="filterBtn-UL" class="px-2.5 py-1 rounded-lg text-xs font-mono border transition">Uplink</button>
+        <button onclick="setPacketFilter('DL')" id="filterBtn-DL" class="px-2.5 py-1 rounded-lg text-xs font-mono border transition">Downlink</button>
+        <button onclick="setPacketFilter('CRC_FAIL')" id="filterBtn-CRC_FAIL" class="px-2.5 py-1 rounded-lg text-xs font-mono border transition">CRC napake</button>
+        <input type="text" id="packetSearchInput" oninput="applyPacketSearch()" placeholder="Išči paket..." class="px-2.5 py-1 rounded-lg bg-space-950 border border-slate-800 text-slate-200 text-xs font-mono focus:outline-none focus:border-sky-500 w-28 sm:w-40 ml-1">
+      </div>
+    </div>
+    <div class="overflow-x-auto max-h-[320px] overflow-y-auto">
+      <table class="w-full text-left border-collapse text-xs font-mono">
+        <thead class="sticky top-0 bg-space-950 border-b border-slate-800 text-slate-400 text-[10px] uppercase tracking-wider">
+          <tr>
+            <th class="py-2.5 px-3">Smer / tip</th>
+            <th class="py-2.5 px-3">Bazna postaja</th>
+            <th class="py-2.5 px-3">Naprava / vlak</th>
+            <th class="py-2.5 px-3">Frekvenca / SF</th>
+            <th class="py-2.5 px-3">Signal (RSSI / SNR)</th>
+            <th class="py-2.5 px-3">Čas</th>
+            <th class="py-2.5 px-3 text-right">Podrobnosti</th>
+          </tr>
+        </thead>
+        <tbody id="packetsTableTbody" class="divide-y divide-slate-800/60 text-slate-300"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <p class="text-center text-[10px] text-slate-600 font-mono pb-4">
+    Konceptni demo. Vlaki, LoRaWAN paketi in SIP status so lokalno simulirani na strežniku; letala (ADS-B), ISS in vreme (ARSO) so prikazani v živo, kadar je vir dosegljiv, sicer se prikaže demo nadomestek. Ni uradno orodje SŽ / DRI / ARSO.
+  </p>
+</main>
+
+<div id="packetModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-3 sm:p-4">
+  <div class="bg-space-900 border border-slate-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div class="p-3.5 bg-space-850 border-b border-slate-800 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span id="modalTypeBadge" class="px-2 py-0.5 rounded text-xs font-mono font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40">PAKET</span>
+        <span id="modalPacketId" class="text-sm font-bold text-white font-mono">-</span>
+      </div>
+      <button onclick="closePacketModal()" class="w-8 h-8 rounded-lg bg-space-950 text-slate-400 hover:text-white flex items-center justify-center border border-slate-800"><span class="ic" data-i="close"></span></button>
+    </div>
+    <div class="p-4 overflow-y-auto space-y-3 font-mono text-xs flex-1">
+      <div class="grid grid-cols-2 gap-2 bg-space-950 p-3 rounded-xl border border-slate-800">
+        <div>Postaja / prehod: <span id="modalOverviewGw" class="text-white font-bold">-</span></div>
+        <div>Naprava / EUI: <span id="modalOverviewDev" class="text-sky-400">-</span></div>
+        <div>Frekvenca / SF: <span id="modalOverviewFreq" class="text-amber-400 font-bold">-</span></div>
+        <div>Čas: <span id="modalOverviewTime" class="text-slate-400">-</span></div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400 uppercase font-bold mb-1">Dekodiran tovor:</div>
+        <pre id="modalOverviewPayload" class="p-3 rounded-xl bg-space-950 border border-slate-800 text-emerald-400 overflow-x-auto text-[11px]"></pre>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400 uppercase font-bold mb-1">Surovi paket:</div>
+        <pre id="modalRawJson" class="p-3 rounded-xl bg-space-950 border border-slate-800 text-cyan-300 overflow-x-auto text-[10px] max-h-48"></pre>
+      </div>
+    </div>
+    <div class="p-3 bg-space-850 border-t border-slate-800 flex items-center justify-end gap-2">
+      <button onclick="copyModalJson()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-mono border border-slate-700 transition"><span class="ic" data-i="copy"></span> Kopiraj JSON</button>
+      <button onclick="closePacketModal()" class="px-4 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-mono font-bold transition">Zapri</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
