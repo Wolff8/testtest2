@@ -5,6 +5,7 @@ const { Server } = require("socket.io");
 
 const { buildSnapshot } = require("./src/signals");
 const { startFeed } = require("./src/external/aprsis");
+const ttnPackets = require("./src/external/ttnPackets");
 const { PLACE_BOUNDS } = require("./src/geo");
 
 const PORT = process.env.PORT || 3000;
@@ -34,6 +35,10 @@ app.get("/api/signals", async (req, res) => {
   }
 });
 
+app.get("/api/packets", (req, res) => {
+  res.json({ items: ttnPackets.list(), watching: Boolean(TTI_API_KEY) });
+});
+
 io.on("connection", (socket) => {
   socket.emit("hello", { ok: true });
 });
@@ -47,6 +52,12 @@ setInterval(() => {
 // which place a given request asks for.
 const defaultBounds = PLACE_BOUNDS.ms;
 startFeed(defaultBounds.lat, defaultBounds.lon, defaultBounds.radiusKm * 3);
+
+// Real live LoRaWAN uplink packets from the operator's own TTN
+// application(s), pushed to every connected client the instant they
+// arrive. No-op without TTI_API_KEY.
+ttnPackets.setOnPacket((packet) => io.emit("packet", packet));
+ttnPackets.start(TTI_API_KEY);
 
 server.listen(PORT, () => {
   console.log(`SignalsSnap NOC listening on http://localhost:${PORT}`);

@@ -319,6 +319,43 @@ function toggleExpandMap() {
 function scrollToLiveMap() { document.getElementById('mapSection').scrollIntoView({ behavior: 'smooth' }); }
 
 // ========================================================================
+// LIVE LORAWAN PACKETS (real uplinks from your own TTN application)
+// ========================================================================
+let livePackets = [];
+function renderPacketsTable() {
+  const tbody = document.getElementById('packetsTableTbody');
+  tbody.innerHTML = livePackets.slice(0, 60).map(p => `<tr>
+    <td class="py-2.5 px-3 text-sky-400 font-mono text-[11px]">${p.dev}</td>
+    <td class="py-2.5 px-3 text-slate-300">${p.app || '—'}</td>
+    <td class="py-2.5 px-3 font-bold text-white">${p.gtw || '—'}</td>
+    <td class="py-2.5 px-3 text-amber-300">${p.mhz ? p.mhz + ' MHz' : '—'}${p.sf ? ' · SF' + p.sf : ''}</td>
+    <td class="py-2.5 px-3 font-bold text-emerald-400">${p.rssi != null ? p.rssi + ' dBm' : '—'} <span class="text-slate-500 text-[10px]">${p.snr != null ? '(' + p.snr + ' dB)' : ''}</span></td>
+    <td class="py-2.5 px-3 text-slate-400">${p.fcnt ?? '—'}</td>
+    <td class="py-2.5 px-3 text-slate-400 text-[10px]">${(p.time || '').slice(11, 19)}</td>
+  </tr>`).join('');
+  document.getElementById('packetBadgeCount').innerText = `${livePackets.length} paketov`;
+}
+async function fetchPackets() {
+  try {
+    const res = await fetch('/api/packets');
+    if (!res.ok) return;
+    const data = await res.json();
+    livePackets = data.items || [];
+    document.getElementById('packetsWatchLabel').innerText = data.watching
+      ? (livePackets.length ? 'živo · TTN aplikacija' : 'živo · čaka na prvi paket')
+      : 'ni nastavljenega TTN ključa';
+    renderPacketsTable();
+  } catch (e) {}
+}
+function addLivePacket(p) {
+  if (livePackets.some(x => x.id === p.id)) return;
+  livePackets.unshift(p);
+  if (livePackets.length > 150) livePackets.length = 150;
+  document.getElementById('packetsWatchLabel').innerText = 'živo · TTN aplikacija';
+  renderPacketsTable();
+}
+
+// ========================================================================
 // SOCKET.IO + INIT
 // ========================================================================
 function initSocketIo() {
@@ -326,6 +363,7 @@ function initSocketIo() {
   try {
     const socket = io();
     socket.on('feed', () => { refreshAllServerData(); });
+    socket.on('packet', (p) => { addLivePacket(p); });
   } catch (e) {}
 }
 
@@ -334,6 +372,7 @@ window.onload = function () {
   initMap();
   initSocketIo();
   refreshAllServerData();
+  fetchPackets();
 };
 
 window.selectTrain = selectTrain;

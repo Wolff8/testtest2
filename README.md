@@ -37,6 +37,7 @@ shows the public Packet Broker gateway list.
 | APRS | Live [APRS-IS](http://www.aprs-is.net/) feed (`rotate.aprs2.net:14580`), geo-filtered | The real amateur-radio APRS network itself, not a polling API — no key needed. An empty list shortly after the server starts, or in a quiet area, is a real "nothing heard yet" state, not a failure. |
 | SIP | Real active `OPTIONS` probe (UDP) to iptel.org, sip.linphone.org, opensips.org | A genuine network health check, not a status flag — a real timeout shows as "ni odziva". |
 | LoRaWAN gateways | [Packet Broker](https://www.packetbroker.org/) public mapper API (no key) | Real public gateway locations/online status. Deeper per-gateway uplink/downlink counts if `TTI_API_KEY` is set, scoped to gateways that key can see. |
+| LoRaWAN packets | Live TTN v3 application event stream, requires `TTI_API_KEY` | Real uplink packets (RSSI, SNR, frequency, SF, payload) from your own registered devices, pushed to the page the instant they arrive via Socket.IO. Not arbitrary public traffic — TTN doesn't expose that, and neither does this: the server auto-discovers and subscribes only to applications your key has rights on. Without a key, this panel stays empty (never fabricated packets). |
 | Amateur radio repeaters | [Hearham](https://hearham.com/) public API (no key) | Community-maintained database. |
 
 **Important caveat:** this was built in a sandbox whose outbound network
@@ -63,7 +64,9 @@ likely to need a field-name adjustment.
   presets only, no data.
 - `src/external/*.js` — one adapter per external source. HTTP-based ones
   return `null` on any failure; `aprsis.js` runs a persistent background
-  TCP connection and exposes recently-heard stations.
+  TCP connection and exposes recently-heard stations; `ttnPackets.js`
+  opens a persistent SSE connection per TTN application and pushes each
+  real packet straight to connected browsers via Socket.IO.
 - `src/signals.js` — merges all of the above into one snapshot per place,
   tagging every field `available: true/false`.
 - `public/` — the dashboard frontend (Leaflet map, Socket.IO client).

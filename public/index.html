@@ -181,8 +181,35 @@ tailwind.config = {
     </div>
   </div>
 
+  <div class="rounded-2xl bg-space-900 border border-slate-800 shadow-xl overflow-hidden flex flex-col" id="packetsSection">
+    <div class="p-3 sm:p-4 bg-space-850 border-b border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <span class="ic text-indigo-400" data-i="tower"></span>
+        <span class="text-xs font-mono font-bold text-white uppercase tracking-wider">Živi LoRaWAN paketi (vaša TTN aplikacija)</span>
+        <span id="packetBadgeCount" class="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono text-[11px] font-bold">0 paketov</span>
+      </div>
+      <span id="packetsWatchLabel" class="text-[10px] font-mono text-slate-500">—</span>
+    </div>
+    <div class="overflow-x-auto max-h-[320px] overflow-y-auto">
+      <table class="w-full text-left border-collapse text-xs font-mono">
+        <thead class="sticky top-0 bg-space-950 border-b border-slate-800 text-slate-400 text-[10px] uppercase tracking-wider">
+          <tr>
+            <th class="py-2.5 px-3">Naprava</th>
+            <th class="py-2.5 px-3">Aplikacija</th>
+            <th class="py-2.5 px-3">Prehod</th>
+            <th class="py-2.5 px-3">Frekvenca / SF</th>
+            <th class="py-2.5 px-3">Signal (RSSI / SNR)</th>
+            <th class="py-2.5 px-3">FCnt</th>
+            <th class="py-2.5 px-3">Čas</th>
+          </tr>
+        </thead>
+        <tbody id="packetsTableTbody" class="divide-y divide-slate-800/60 text-slate-300"></tbody>
+      </table>
+    </div>
+  </div>
+
   <p class="text-center text-[10px] text-slate-600 font-mono pb-4">
-    Konceptni demo. Letala (ADS-B), ISS, vreme in reke (ARSO), APRS (APRS-IS, v živo), LoRaWAN prehodi (Packet Broker), repetitorji (Hearham) in železniške postaje (OSM) so realni javni podatki — sicer piše "ni podatkov", nič ni izmišljeno. SIP prikazuje rezultat pravega aktivnega OPTIONS testa proti javnim SIP strežnikom. Položaji vlakov so ocena iz objavljenega voznega reda, ne prava GPS telemetrija. Ni uradno orodje SŽ / DRI / ARSO.
+    Konceptni demo. Letala (ADS-B), ISS, vreme in reke (ARSO), APRS (APRS-IS, v živo), LoRaWAN prehodi (Packet Broker), repetitorji (Hearham) in železniške postaje (OSM) so realni javni podatki — sicer piše "ni podatkov", nič ni izmišljeno. SIP prikazuje rezultat pravega aktivnega OPTIONS testa proti javnim SIP strežnikom. LoRaWAN paketi (spodaj) so realni uplinki iz vaše lastne TTN aplikacije, ne javni promet tujih naprav. Položaji vlakov so ocena iz objavljenega voznega reda, ne prava GPS telemetrija. Ni uradno orodje SŽ / DRI / ARSO.
   </p>
 </main>
 
