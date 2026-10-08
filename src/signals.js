@@ -15,6 +15,7 @@ const { recentStations } = require("./external/aprsis");
 const { fetchGateways, fetchConnectionStats } = require("./external/packetbroker");
 const { pingAll } = require("./external/sipprobe");
 const { currentTrains } = require("./trainSchedule");
+const { getAsterixSurveillanceSnapshot } = require("./external/asterix");
 
 function unavailable(note) {
   return { available: false, items: [], note };
@@ -27,7 +28,7 @@ async function buildSnapshot(place, ttiApiKey) {
   const bounds = PLACE_BOUNDS[place] || PLACE_BOUNDS.ms;
   const radiusNm = Math.round((bounds.radiusKm / 1.852) * 1.4);
 
-  const [planesLive, issLive, meteoLive, riversLive, stationsLive, repeatersLive, gatewaysLive, sipHosts, trainsLive] = await Promise.all([
+  const [planesLive, issLive, meteoLive, riversLive, stationsLive, repeatersLive, gatewaysLive, sipHosts, trainsLive, asterixLive] = await Promise.all([
     fetchPlanes(bounds.lat, bounds.lon, radiusNm),
     fetchIss(),
     fetchMeteo(bounds.lat, bounds.lon, bounds.radiusKm * 3.5),
@@ -37,6 +38,7 @@ async function buildSnapshot(place, ttiApiKey) {
     fetchGateways(bounds.lat, bounds.lon, bounds.radiusKm * 1.5),
     pingAll(),
     currentTrains(),
+    getAsterixSurveillanceSnapshot({ ...bounds, place }),
   ]);
 
   if (ttiApiKey && gatewaysLive) {
@@ -73,6 +75,7 @@ async function buildSnapshot(place, ttiApiKey) {
     iss: issLive
       ? { available: true, ...issLive, km: Math.round(haversineKm(bounds.lat, bounds.lon, issLive.lat, issLive.lon)) }
       : unavailable("Open Notify ISS API ni dosegljiv."),
+    asterix: asterixLive || unavailable("ASTERIX radar surveillance vir ni dosegljiv."),
   };
 }
 

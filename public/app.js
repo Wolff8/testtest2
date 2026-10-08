@@ -13,7 +13,8 @@ const ICONS = {
   map: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9 4l6 2 5-2v14l-5 2-6-2-5 2V6z"/><path d="M9 4v14M15 6v14"/></svg>',
   expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
   compress: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>',
-  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5c0 8 7 15 15 15l2-4-5-2-2 2c-2-1-4-3-5-5l2-2-2-5z"/></svg>'
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5c0 8 7 15 15 15l2-4-5-2-2 2c-2-1-4-3-5-5l2-2-2-5z"/></svg>',
+  radar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><path d="M12 12l6.5-6.5"/></svg>'
 };
 function paintIcons(root) {
   (root || document).querySelectorAll('[data-i]').forEach(el => {
@@ -32,11 +33,15 @@ function unavailableHtml(note) { return `<div class="unavailable">Ni podatkov${n
 let currentPlace = "ms";
 let activeSnap = null;
 let selectedTrainId = null;
+let selectedAsterixTargetId = null;
 let activeInspectorTab = 'trains';
+let currentRadarMode = 'auto';
+let arsoRadarOpacity = 0.65;
+let arsoRadarOverlay = null;
 
 let map = null;
-const layerGroups = { trains: null, stations: null, planes: null, meteo: null, aprs: null, lorawan: null };
-const layerVisibility = { trains: true, stations: true, planes: true, meteo: true, aprs: false, lorawan: false };
+const layerGroups = { trains: null, stations: null, asterix: null, arsoRadar: null, planes: null, meteo: null, aprs: null, lorawan: null };
+const layerVisibility = { trains: true, stations: true, asterix: true, arsoRadar: true, planes: true, meteo: true, aprs: false, lorawan: false };
 
 function selectedTrain() {
   if (!activeSnap || !activeSnap.trains.available) return null;
@@ -84,6 +89,12 @@ function updateAllUiViews() {
   document.getElementById('badgeCountTrains').innerText = activeSnap.trains.available ? `${activeSnap.trains.items.length} vlakov` : "ni vlakov";
   document.getElementById('badgeCountStations').innerText = activeSnap.railStations.available ? `${activeSnap.railStations.items.length} postaj` : "ni postaj";
   document.getElementById('badgeCountPlanes').innerText = activeSnap.planes.available ? `${activeSnap.planes.items.length} letal` : "ni letal";
+  const astBadge = document.getElementById('badgeCountAsterix');
+  if (astBadge) {
+    astBadge.innerText = activeSnap.asterix?.available
+      ? `${activeSnap.asterix.metrics?.totalTargets ?? activeSnap.asterix.targets?.length ?? 0} radar (ASTERIX)`
+      : "radar: ni podatkov";
+  }
   document.getElementById('badgeCountMeteo').innerText = activeSnap.meteo.available ? `${activeSnap.meteo.items.length} ARSO` : "ni ARSO";
   document.getElementById('badgeCountAprs').innerText = activeSnap.aprs.available ? `${activeSnap.aprs.items.length} APRS` : "ni APRS";
   document.getElementById('badgeCountLora').innerText = activeSnap.lorawan.available ? `${activeSnap.lorawan.items.length} LoRaWAN` : "ni LoRaWAN";
@@ -94,6 +105,7 @@ function updateAllUiViews() {
   }
 
   renderTrainsList();
+  renderAsterixList();
   renderPlanesList();
   renderMeteoAndRiversList();
   renderAprsAndHamList();
@@ -149,6 +161,142 @@ function renderTrainsList() {
     </div>`;
   }).join('');
   paintIcons(c);
+}
+
+function changeArsoOpacity(val) {
+  arsoRadarOpacity = Math.max(0, Math.min(100, Number(val))) / 100;
+  const valEl = document.getElementById('arsoOpacityValue');
+  if (valEl) valEl.innerText = `${val}%`;
+  const badgeEl = document.getElementById('badgeArsoRadar');
+  if (badgeEl) badgeEl.innerText = `ARSO Radar: ${val}%`;
+  if (arsoRadarOverlay) {
+    arsoRadarOverlay.setOpacity(arsoRadarOpacity);
+  }
+}
+
+async function setRadarMode(mode) {
+  currentRadarMode = mode;
+  ['auto', 'force_sdr', 'force_grid', 'force_replay'].forEach(m => {
+    const b = document.getElementById(`radarModeBtn-${m}`);
+    if (b) {
+      if (m === mode) {
+        b.className = 'px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold';
+      } else {
+        b.className = 'px-1.5 py-0.5 rounded text-[9px] bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200';
+      }
+    }
+  });
+
+  const alertEl = document.getElementById('radarFailoverAlert');
+  if (alertEl) {
+    alertEl.classList.remove('hidden');
+    alertEl.innerText = `Prenašam način: ${mode}...`;
+  }
+
+  try {
+    const res = await fetch(`/api/sdr/asterix?place=${encodeURIComponent(currentPlace)}&mode=${mode}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (activeSnap) {
+        activeSnap.asterix = data;
+        updateAllUiViews();
+      }
+    }
+  } catch (e) {
+    console.error("Napaka pri preklopu načina radarja:", e);
+  }
+}
+
+function selectAsterixTarget(id) {
+  selectedAsterixTargetId = id;
+  renderAsterixList();
+  if (!activeSnap || !activeSnap.asterix || !activeSnap.asterix.targets) return;
+  const target = activeSnap.asterix.targets.find(t => t.id === id);
+  if (target && map) {
+    map.flyTo([target.lat, target.lon], 11, { duration: 1.2 });
+    document.getElementById('hudName').innerText = `${target.flight} (${target.catName})`;
+    document.getElementById('hudRoute').innerText = `Squawk: ${target.squawk || '—'} · ${target.fl ? 'FL' + target.fl : (target.alt ? target.alt + ' ft' : '—')} · Odmik: ${target.distKm} km`;
+    document.getElementById('hudProgress').innerText = target.gs != null ? `${target.gs} kt` : '—';
+    document.getElementById('hudEta').innerText = target.bearingDeg != null ? `${target.bearingDeg}°` : '—';
+    document.getElementById('hudSource').innerText = `${target.sourceType} · ${activeSnap.asterix.radarStation || 'SDR'}`;
+  }
+}
+
+function renderAsterixList() {
+  const c = document.getElementById('asterixListContainer');
+  const srcLabel = document.getElementById('asterixSourceLabel');
+  const stName = document.getElementById('radarStationName');
+  const pktCount = document.getElementById('asterixPktCount');
+  const cat021El = document.getElementById('cat021CountVal');
+  const cat048El = document.getElementById('cat048CountVal');
+  const alertEl = document.getElementById('radarFailoverAlert');
+  const dot = document.getElementById('radarStatusDot');
+
+  if (!activeSnap || !activeSnap.asterix || !activeSnap.asterix.available) {
+    if (srcLabel) srcLabel.innerText = "ni podatkov";
+    if (c) c.innerHTML = unavailableHtml(activeSnap?.asterix?.note || "SDR ASTERIX vir ni dosegljiv");
+    return;
+  }
+
+  const ast = activeSnap.asterix;
+  if (stName) stName.innerText = ast.radarStation || "Murska Sobota Regional SDR";
+  if (pktCount) pktCount.innerText = `${ast.metrics?.totalTargets ?? ast.targets?.length ?? 0} tarč`;
+  if (cat021El) cat021El.innerText = `${ast.metrics?.cat021Count ?? 0} tarč`;
+  if (cat048El) cat048El.innerText = `${ast.metrics?.cat048Count ?? 0} tarč`;
+
+  if (ast.engineStatus === "sdr_live") {
+    if (srcLabel) { srcLabel.innerText = "SDR Živo (100.67.196.96)"; srcLabel.className = "text-emerald-400 font-bold"; }
+    if (dot) dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+    if (alertEl) alertEl.classList.add('hidden');
+  } else if (ast.engineStatus === "replay_mode") {
+    if (srcLabel) { srcLabel.innerText = "Zgodovinski posnetek"; srcLabel.className = "text-amber-400 font-bold"; }
+    if (dot) dot.className = "w-2 h-2 rounded-full bg-amber-400";
+    if (alertEl) {
+      alertEl.classList.remove('hidden');
+      alertEl.innerText = "Predvajanje umerjenega radarskega posnetka za slovenski zračni prostor.";
+    }
+  } else {
+    if (srcLabel) { srcLabel.innerText = "Preklop: adsb.lol + ASTERIX"; srcLabel.className = "text-cyan-400 font-bold"; }
+    if (dot) dot.className = "w-2 h-2 rounded-full bg-cyan-400 animate-pulse";
+    if (alertEl) {
+      alertEl.classList.remove('hidden');
+      alertEl.innerText = ast.failoverReason || "SDR vozlišče ni dosegljivo — aktiviran avtomatski preklop na regionalno mrežo.";
+    }
+  }
+
+  const targets = ast.targets || [];
+  if (targets.length === 0) {
+    c.innerHTML = '<div class="p-3 text-slate-500 text-center font-mono text-[10px]">Trenutno ni zaznanih ASTERIX radijskih tarč v dosegu.</div>';
+    return;
+  }
+
+  c.innerHTML = targets.map(t => {
+    const isCat048 = t.cat === 48;
+    const isSel = t.id === selectedAsterixTargetId;
+    const catBadgeClass = isCat048 ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40' : 'bg-cyan-950/80 text-cyan-300 border-cyan-500/40';
+    const catLabel = isCat048 ? 'CAT 048 SSR/PSR' : 'CAT 021 ADS-B';
+    return `<div onclick="selectAsterixTarget('${t.id}')" class="p-2 rounded-xl border transition cursor-pointer ${isSel ? 'bg-emerald-500/20 border-emerald-500/60' : 'bg-space-900 border-slate-800 hover:border-slate-700'}">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-1.5 min-w-0">
+          <span class="w-1.5 h-1.5 rounded-full ${isCat048 ? 'bg-emerald-400' : 'bg-cyan-400'}"></span>
+          <span class="font-bold text-white text-xs truncate">${t.flight}</span>
+          <span class="text-[9px] px-1 py-0.2 rounded border font-mono ${catBadgeClass}">${catLabel}</span>
+        </div>
+        <div class="text-right text-[10px] text-amber-300 font-bold tabular-nums">
+          ${t.fl ? 'FL' + t.fl : (t.alt ? t.alt + ' ft' : '—')}
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-1 mt-1 text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-800/60">
+        <div>SQK: <span class="text-slate-200 font-bold">${t.squawk || '—'}</span></div>
+        <div>Odmik: <span class="text-slate-200">${t.distKm} km</span></div>
+        <div class="text-right">Smer: <span class="text-slate-200">${t.bearingDeg}°</span></div>
+      </div>
+      <div class="flex items-center justify-between text-[9px] text-slate-500 font-mono mt-0.5">
+        <span>ICAO: <code class="text-slate-400">${t.icao || String(t.id).slice(0, 8)}</code></span>
+        <span>Hitrost: ${t.gs ? t.gs + ' kt' : '—'}</span>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderPlanesList() {
@@ -222,14 +370,17 @@ function renderNetworkTab() {
 
 function switchInspectorTab(tabId) {
   activeInspectorTab = tabId;
-  ['trains', 'planes', 'meteo', 'aprs', 'network'].forEach(t => {
+  ['trains', 'asterix', 'planes', 'meteo', 'aprs', 'network'].forEach(t => {
     const btn = document.getElementById(`tabBtn-${t}`), panel = document.getElementById(`inspectorTab-${t}`);
-    if (t === tabId) { btn.className = 'px-2 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[11px] font-mono font-bold whitespace-nowrap'; panel.classList.remove('hidden'); }
-    else { btn.className = 'px-2 py-1 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[11px] font-mono font-bold hover:text-white whitespace-nowrap'; panel.classList.add('hidden'); }
+    if (btn && panel) {
+      if (t === tabId) { btn.className = 'px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-mono font-bold whitespace-nowrap'; panel.classList.remove('hidden'); }
+      else { btn.className = 'px-2 py-1 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[11px] font-mono font-bold hover:text-white whitespace-nowrap'; panel.classList.add('hidden'); }
+    }
   });
   if (!activeSnap) return;
   const countEl = document.getElementById('tabItemsCount');
   if (tabId === 'trains') countEl.innerText = activeSnap.trains.available ? `${activeSnap.trains.items.length} vlakov` : "0";
+  if (tabId === 'asterix') countEl.innerText = activeSnap.asterix?.available ? `${activeSnap.asterix.metrics?.totalTargets ?? activeSnap.asterix.targets?.length ?? 0} tarč` : "0";
   if (tabId === 'planes') countEl.innerText = activeSnap.planes.available ? `${activeSnap.planes.items.length} letal` : "0";
   if (tabId === 'meteo') countEl.innerText = activeSnap.meteo.available ? `${activeSnap.meteo.items.length} postaj` : "0";
   if (tabId === 'aprs') countEl.innerText = (activeSnap.aprs.available ? activeSnap.aprs.items.length : 0) + (activeSnap.ham.available ? activeSnap.ham.items.length : 0);
@@ -247,17 +398,38 @@ function initMap() {
   }).addTo(map);
   layerGroups.trains = L.layerGroup().addTo(map);
   layerGroups.stations = L.layerGroup().addTo(map);
+  layerGroups.arsoRadar = L.layerGroup().addTo(map);
+  layerGroups.asterix = L.layerGroup().addTo(map);
   layerGroups.planes = L.layerGroup().addTo(map);
   layerGroups.meteo = L.layerGroup().addTo(map);
   layerGroups.aprs = L.layerGroup();
   layerGroups.lorawan = L.layerGroup();
+
+  try {
+    arsoRadarOverlay = L.imageOverlay('/api/radar/arso-image', [[45.30, 13.25], [46.95, 16.65]], {
+      opacity: arsoRadarOpacity,
+      interactive: false
+    }).addTo(layerGroups.arsoRadar);
+  } catch (e) {
+    console.warn("Napaka pri dodajanju ARSO radar sloja:", e);
+  }
+
   setTimeout(() => { if (map) map.invalidateSize(); }, 350);
 }
 function toggleMapLayer(layerName) {
   layerVisibility[layerName] = !layerVisibility[layerName];
   const isVisible = layerVisibility[layerName];
   const btn = document.getElementById(`btnLayer${layerName.charAt(0).toUpperCase() + layerName.slice(1)}`);
-  const activeClasses = { trains: ['bg-amber-500/20', 'text-amber-300', 'border-amber-500/40'], stations: ['bg-sky-500/20', 'text-sky-300', 'border-sky-500/40'], planes: ['bg-cyan-500/20', 'text-cyan-300', 'border-cyan-500/40'], meteo: ['bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/40'], aprs: ['bg-purple-500/20', 'text-purple-300', 'border-purple-500/40'], lorawan: ['bg-indigo-500/20', 'text-indigo-300', 'border-indigo-500/40'] }[layerName];
+  const activeClasses = {
+    trains: ['bg-amber-500/20', 'text-amber-300', 'border-amber-500/40'],
+    stations: ['bg-sky-500/20', 'text-sky-300', 'border-sky-500/40'],
+    asterix: ['bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/40'],
+    arsoRadar: ['bg-teal-500/20', 'text-teal-300', 'border-teal-500/40'],
+    planes: ['bg-cyan-500/20', 'text-cyan-300', 'border-cyan-500/40'],
+    meteo: ['bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/40'],
+    aprs: ['bg-purple-500/20', 'text-purple-300', 'border-purple-500/40'],
+    lorawan: ['bg-indigo-500/20', 'text-indigo-300', 'border-indigo-500/40']
+  }[layerName] || ['bg-emerald-500/20', 'text-emerald-300', 'border-emerald-500/40'];
   if (btn) {
     if (isVisible) { btn.classList.add(...activeClasses); btn.classList.remove('bg-space-950', 'text-slate-400', 'border-slate-800'); }
     else { btn.classList.remove(...activeClasses); btn.classList.add('bg-space-950', 'text-slate-400', 'border-slate-800'); }
@@ -267,6 +439,77 @@ function toggleMapLayer(layerName) {
 }
 function updateMapLayers() {
   if (!map || !activeSnap) return;
+
+  // Refresh ARSO Radar Overlay Opacity & Visibility
+  if (arsoRadarOverlay) {
+    arsoRadarOverlay.setOpacity(arsoRadarOpacity);
+  }
+
+  // ASTERIX Radar Surveillance Layer
+  layerGroups.asterix.clearLayers();
+  if (activeSnap.asterix && activeSnap.asterix.available) {
+    const radarSite = activeSnap.asterix.radarSiteCoords || { lat: activeSnap.lat, lon: activeSnap.lon };
+
+    // Range rings at 10 NM (18.52 km), 20 NM (37.04 km), 40 NM (74.08 km)
+    [10, 20, 40].forEach((nm) => {
+      L.circle([radarSite.lat, radarSite.lon], {
+        radius: nm * 1852,
+        color: '#10b981',
+        weight: 1,
+        dashArray: '3, 6',
+        fill: false,
+        opacity: 0.35,
+        interactive: false
+      }).addTo(layerGroups.asterix);
+    });
+
+    // Radar Center Sensor Icon
+    const centerIcon = L.divIcon({
+      className: 'radar-site-marker',
+      html: `<div class="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-950 border border-emerald-400 text-emerald-300 text-[10px] shadow"><span class="ic" data-i="radar"></span></div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12]
+    });
+    const centerMarker = L.marker([radarSite.lat, radarSite.lon], { icon: centerIcon }).addTo(layerGroups.asterix);
+    centerMarker.bindPopup(`<div class="font-mono text-xs p-1"><div class="font-bold text-emerald-400">📡 ${activeSnap.asterix.radarStation || 'ASTERIX Radar'}</div><div class="text-[10px] text-slate-300">${fmtCoord(radarSite.lat, radarSite.lon)} · Senzorsko vozlišče</div></div>`);
+
+    // Target blips
+    (activeSnap.asterix.targets || []).forEach(t => {
+      if (t.lat == null || t.lon == null) return;
+      const isSelected = t.id === selectedAsterixTargetId;
+      const isCat048 = t.cat === 48;
+
+      let html = '';
+      if (isCat048) {
+        html = `<div class="relative flex items-center justify-center w-7 h-7 ${isSelected ? 'scale-125' : ''}">
+          <span class="absolute w-5 h-5 rounded-full border border-emerald-400/80 bg-emerald-500/20"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-emerald-300/80 shadow"></span>
+        </div>`;
+      } else {
+        html = `<div class="flex items-center justify-center w-7 h-7 rounded-full ${isSelected ? 'bg-cyan-400 text-slate-950 scale-125 ring-2 ring-white' : 'bg-cyan-500/90 text-slate-950'} shadow-lg text-[10px] font-bold" style="transform:rotate(${t.track || 0}deg)">▲</div>`;
+      }
+
+      const icon = L.divIcon({
+        className: 'asterix-target-marker',
+        html,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+
+      const m = L.marker([t.lat, t.lon], { icon }).addTo(layerGroups.asterix);
+      m.bindPopup(`<div class="font-mono text-xs p-1">
+        <div class="font-bold ${isCat048 ? 'text-emerald-400' : 'text-cyan-400'} flex items-center gap-1.5">
+          <span>${t.flight}</span>
+          <span class="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-300 font-normal">${isCat048 ? 'CAT 048 SSR/PSR' : 'CAT 021 ADS-B'}</span>
+        </div>
+        <div class="text-slate-300 text-[11px] mt-1">Višina: ${t.fl ? 'FL' + t.fl : (t.alt ? t.alt + ' ft' : '—')} · Hitrost: ${t.gs ? t.gs + ' kt' : '—'}</div>
+        <div class="text-[10px] text-slate-400 mt-0.5">Squawk: ${t.squawk || '—'} · Odmik: ${t.distKm} km · Smer: ${t.bearingDeg}°</div>
+        <div class="text-[9px] text-slate-500 italic mt-0.5">${t.sourceType} · ICAO: ${t.icao || t.id}</div>
+        <button onclick="selectAsterixTarget('${t.id}')" class="mt-2 w-full py-1 rounded ${isCat048 ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-cyan-600 hover:bg-cyan-500'} text-white font-bold text-[10px]">Izberi tarčo</button>
+      </div>`);
+      m.on('click', () => selectAsterixTarget(t.id));
+    });
+  }
   layerGroups.trains.clearLayers();
   if (activeSnap.trains.available) activeSnap.trains.items.forEach(t => {
     const isSelected = t.id === selectedTrainId;
@@ -376,6 +619,9 @@ window.onload = function () {
 };
 
 window.selectTrain = selectTrain;
+window.selectAsterixTarget = selectAsterixTarget;
+window.changeArsoOpacity = changeArsoOpacity;
+window.setRadarMode = setRadarMode;
 window.changePlace = changePlace;
 window.refreshAllServerData = refreshAllServerData;
 window.scrollToLiveMap = scrollToLiveMap;

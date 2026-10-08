@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for integrating direct SDR ASTERIX radar surveillance engine with binary Cat 021/Cat 048 decoding, automatic failover to regional receiver grid (adsb.lol) and historical replay, and static ARSO Slovenian weather radar precipitation layer with opacity slider.",
+  "updatedAt":  "2026-10-08T01:02:37.550971331Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

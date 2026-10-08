@@ -94,7 +94,9 @@ tailwind.config = {
       <span class="inline-flex items-center gap-1 text-[11px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/30"><span class="ic" data-i="train"></span><span id="badgeCountTrains">— vlakov</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-sky-300 bg-sky-950/60 px-2 py-0.5 rounded border border-sky-500/30"><span class="ic" data-i="tower"></span><span id="badgeCountStations">— postaj</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/30"><span class="ic" data-i="plane"></span><span id="badgeCountPlanes">— letal</span></span>
-      <span class="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30"><span class="ic" data-i="cloud"></span><span id="badgeCountMeteo">— ARSO</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30"><span class="ic" data-i="radar"></span><span id="badgeCountAsterix">— radar (ASTERIX)</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-teal-300 bg-teal-950/60 px-2 py-0.5 rounded border border-teal-500/30"><span class="ic" data-i="cloud"></span><span id="badgeArsoRadar">ARSO Radar: 65%</span></span>
+      <span class="inline-flex items-center gap-1 text-[11px] text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30"><span class="ic" data-i="cloud"></span><span id="badgeCountMeteo">— ARSO postaje</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-500/30"><span class="ic" data-i="radio"></span><span id="badgeCountAprs">— APRS</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-indigo-300 bg-indigo-950/60 px-2 py-0.5 rounded border border-indigo-500/30"><span class="ic" data-i="tower"></span><span id="badgeCountLora">— LoRaWAN</span></span>
       <span class="inline-flex items-center gap-1 text-[11px] text-yellow-300 bg-yellow-950/60 px-2 py-0.5 rounded border border-yellow-500/30"><span class="ic" data-i="sat"></span><span id="issText">ISS: —</span></span>
@@ -116,10 +118,17 @@ tailwind.config = {
         <div class="flex items-center gap-1 sm:gap-1.5 flex-wrap">
           <button onclick="toggleMapLayer('trains')" id="btnLayerTrains" class="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-mono font-bold transition">Vlaki (ocena)</button>
           <button onclick="toggleMapLayer('stations')" id="btnLayerStations" class="px-2 py-0.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-mono font-bold transition">Postaje (OSM)</button>
+          <button onclick="toggleMapLayer('asterix')" id="btnLayerAsterix" class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold transition">Radar (ASTERIX)</button>
+          <button onclick="toggleMapLayer('arsoRadar')" id="btnLayerArsoRadar" class="px-2 py-0.5 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-500/40 text-[10px] font-mono font-bold transition">ARSO Padavine</button>
           <button onclick="toggleMapLayer('planes')" id="btnLayerPlanes" class="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-mono font-bold transition">ADS-B</button>
           <button onclick="toggleMapLayer('meteo')" id="btnLayerMeteo" class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold transition">ARSO</button>
           <button onclick="toggleMapLayer('aprs')" id="btnLayerAprs" class="px-2 py-0.5 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[10px] font-mono font-bold transition">APRS</button>
           <button onclick="toggleMapLayer('lorawan')" id="btnLayerLorawan" class="px-2 py-0.5 rounded-lg bg-space-950 text-slate-400 border border-slate-800 text-[10px] font-mono font-bold transition">LoRaWAN</button>
+          <div id="arsoOpacityControl" class="flex items-center gap-1.5 bg-space-950/90 px-2 py-0.5 rounded-lg border border-slate-800 text-[10px] font-mono">
+            <span class="text-teal-400">Padavine:</span>
+            <input type="range" id="arsoOpacitySlider" min="0" max="100" value="65" oninput="changeArsoOpacity(this.value)" class="w-14 sm:w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-teal-400" title="Motnost ARSO radarja">
+            <span id="arsoOpacityValue" class="text-teal-300 font-bold tabular-nums w-6">65%</span>
+          </div>
           <button onclick="toggleExpandMap()" class="px-2 py-0.5 rounded-lg bg-space-950 hover:bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-800 transition" title="Razširi zemljevid">
             <span class="ic" id="expandIcon" data-i="expand"></span>
           </button>
@@ -143,6 +152,7 @@ tailwind.config = {
       <div class="flex items-center justify-between border-b border-slate-800 pb-2">
         <div class="flex items-center gap-1 overflow-x-auto no-scrollbar">
           <button onclick="switchInspectorTab('trains')" id="tabBtn-trains" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Vlaki</button>
+          <button onclick="switchInspectorTab('asterix')" id="tabBtn-asterix" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Radar (ASTERIX)</button>
           <button onclick="switchInspectorTab('planes')" id="tabBtn-planes" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Letala</button>
           <button onclick="switchInspectorTab('meteo')" id="tabBtn-meteo" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Vreme &amp; reke</button>
           <button onclick="switchInspectorTab('aprs')" id="tabBtn-aprs" class="px-2 py-1 rounded-lg text-[11px] font-mono font-bold whitespace-nowrap">Radioamaterji</button>
@@ -155,6 +165,45 @@ tailwind.config = {
         <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>Vlaki trenutno na progi</span><span class="text-amber-400" id="trainsSourceLabel">—</span></div>
         <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[340px] space-y-1.5" id="trainSignalsList"></div>
         <p class="text-[10px] text-slate-600 leading-snug">Položaj je ocenjen iz realnega objavljenega voznega reda (Transitous) med dvema postajama — ni prava GPS lokacija vlaka.</p>
+      </div>
+      <div id="inspectorTab-asterix" class="hidden space-y-2.5 flex-1 flex flex-col">
+        <div class="flex items-center justify-between gap-1 flex-wrap text-[10px] font-mono">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" id="radarStatusDot"></span>
+            <span class="font-bold text-white uppercase tracking-wider">ASTERIX Nadzor &amp; Radar</span>
+          </div>
+          <span class="text-emerald-400 font-bold" id="asterixSourceLabel">SDR (100.67.196.96)</span>
+        </div>
+
+        <div class="p-2 rounded-xl bg-space-950 border border-slate-800 space-y-1.5 text-[10px] font-mono">
+          <div class="flex items-center justify-between text-slate-400">
+            <span>Senzor: <strong class="text-slate-200" id="radarStationName">Murska Sobota Regional SDR</strong></span>
+            <span id="asterixPktCount" class="text-cyan-400 font-bold tabular-nums">0 tarč</span>
+          </div>
+          <div class="flex items-center gap-1 pt-1 border-t border-slate-800/80 flex-wrap">
+            <span class="text-slate-500">Način:</span>
+            <button onclick="setRadarMode('auto')" id="radarModeBtn-auto" class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold">Avto failover</button>
+            <button onclick="setRadarMode('force_sdr')" id="radarModeBtn-force_sdr" class="px-1.5 py-0.5 rounded text-[9px] bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">SDR (Raw)</button>
+            <button onclick="setRadarMode('force_grid')" id="radarModeBtn-force_grid" class="px-1.5 py-0.5 rounded text-[9px] bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">Mreža</button>
+            <button onclick="setRadarMode('force_replay')" id="radarModeBtn-force_replay" class="px-1.5 py-0.5 rounded text-[9px] bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">Posnetek</button>
+          </div>
+          <div id="radarFailoverAlert" class="text-[9px] text-amber-400 bg-amber-950/40 p-1 rounded border border-amber-500/30 hidden">
+            Avtomatski preklop na regionalno mrežo in arhivski radarski posnetek.
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5 text-[10px] font-mono text-center">
+          <div class="bg-space-950 p-1.5 rounded-lg border border-slate-800">
+            <div class="text-slate-500 text-[9px]">CAT 021 (ADS-B)</div>
+            <div class="text-cyan-300 font-bold text-xs tabular-nums" id="cat021CountVal">0 tarč</div>
+          </div>
+          <div class="bg-space-950 p-1.5 rounded-lg border border-slate-800">
+            <div class="text-slate-500 text-[9px]">CAT 048 (SSR / PSR)</div>
+            <div class="text-emerald-300 font-bold text-xs tabular-nums" id="cat048CountVal">0 tarč</div>
+          </div>
+        </div>
+
+        <div class="bg-space-950 rounded-xl border border-slate-800 p-2 overflow-y-auto max-h-[250px] space-y-1.5 font-mono text-[11px]" id="asterixListContainer"></div>
       </div>
       <div id="inspectorTab-planes" class="hidden space-y-2 flex-1 flex flex-col">
         <div class="text-[10px] font-mono font-bold text-slate-400 uppercase flex items-center justify-between"><span>Zračni promet (ADS-B / adsb.lol)</span><span class="text-sky-400" id="planesSourceLabel">—</span></div>
