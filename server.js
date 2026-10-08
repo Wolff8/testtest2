@@ -59,6 +59,6 @@ startFeed(defaultBounds.lat, defaultBounds.lon, defaultBounds.radiusKm * 3);
 ttnPackets.setOnPacket((packet) => io.emit("packet", packet));
 ttnPackets.start(TTI_API_KEY);
 
-server.listen(PORT, () => {
-  console.log(`SignalsSnap NOC listening on http://localhost:${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`SignalsSnap NOC listening on http://0.0.0.0:${PORT}`);
 });
